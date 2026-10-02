@@ -104,7 +104,11 @@ export function useLiveState(enabled) {
             setIncidents((prev) => prev.filter((i) => i.id !== data.id));
             break;
           case "resource.updated":
-            upsert(setResources, data);
+            if (data.status === "retired") {
+              setResources((prev) => prev.filter((r) => r.id !== data.id));
+            } else {
+              upsert(setResources, data);
+            }
             break;
           case "resource.moved":
             setResources((prev) =>

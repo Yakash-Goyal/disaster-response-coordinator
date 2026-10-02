@@ -50,7 +50,7 @@ npm run build      # rebuilds frontend/dist, which the backend serves
 
 ```bash
 pip install pytest
-python -m pytest tests/ -q     # 60 tests
+python -m pytest tests/ -q     # 63 tests
 ```
 
 ---
@@ -208,6 +208,6 @@ backend/
 frontend/
   src/            React app; components/, lib/
   dist/           prebuilt, served by the backend
-tests/            60 tests
+tests/            63 tests
 docs/             architecture, API reference, demo script, team split
 ```

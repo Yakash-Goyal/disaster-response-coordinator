@@ -164,3 +164,48 @@ def test_analytics_reports_acceptance_rate(client):
     assert summary["decisions_accepted"] == 1
     assert summary["agent_acceptance_rate"] == 1.0
     assert summary["reports_total"] >= 1
+
+
+def test_timestamps_are_sent_as_utc(client):
+    """SQLite drops tzinfo; a naive timestamp is read by browsers as local time."""
+    headers = auth(client)
+    created = client.post(
+        "/api/reports",
+        json={"text": "Building on fire, flames on the second floor", "lat": 30.7333, "lng": 76.7794},
+        headers=headers,
+    ).json()
+    incident = client.get(f"/api/incidents/{created['incident_id']}", headers=headers).json()
+    for field in ("created_at", "updated_at"):
+        assert incident[field].endswith(("Z", "+00:00")), incident[field]
+
+
+def test_admin_can_retire_a_unit_that_has_history(client):
+    """Every unit has audit-log rows, so retiring must not hard-delete it."""
+    headers = auth(client, "admin", "admin123")
+    body = {"name": "Ambulance 99", "type": "ambulance", "lat": 30.73, "lng": 76.77}
+    unit = client.post("/api/resources", json=body, headers=headers).json()
+
+    assert client.delete(f"/api/resources/{unit['id']}", headers=headers).status_code == 204
+
+    listed = {r["id"] for r in client.get("/api/resources", headers=headers).json()}
+    assert unit["id"] not in listed
+    logs = client.get("/api/logs", headers=headers).json()
+    assert any(log["action"] == "resource_added" and log["resource_id"] == unit["id"] for log in logs)
+    # The name is free for a replacement unit.
+    assert client.post("/api/resources", json=body, headers=headers).status_code == 201
+
+
+def test_rejected_unit_is_not_recommended_again(client):
+    headers = auth(client)
+    client.post(
+        "/api/reports",
+        json={"text": "Man unconscious and bleeding heavily, not responding", "lat": 30.7333, "lng": 76.7794},
+        headers=headers,
+    )
+    first = client.post("/api/dispatch/run", headers=headers).json()[0]
+    client.post(f"/api/dispatch/decisions/{first['id']}/action", json={"action": "reject"}, headers=headers)
+
+    second = client.post("/api/dispatch/run", headers=headers).json()
+    assert second, "the incident should get a fresh recommendation"
+    assert second[0]["incident_id"] == first["incident_id"]
+    assert second[0]["resource_id"] != first["resource_id"]

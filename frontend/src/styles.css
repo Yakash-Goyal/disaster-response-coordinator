@@ -353,6 +353,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* --- map ---------------------------------------------------------------- */
 .map { flex: 1; min-height: 0; background: var(--bg); }
 .leaflet-container { background: #0b1118; font-family: var(--sans); }
+/* Esri's dark gray is a shade lighter than the panels; pull it down to match. */
+.basemap { filter: brightness(0.62) contrast(1.15); }
 .leaflet-control-attribution {
   background: rgba(16, 24, 32, 0.82) !important;
   color: var(--faint) !important;
