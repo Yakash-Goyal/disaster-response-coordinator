@@ -1,0 +1,19 @@
+.responder-page {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.responder-page h1 { margin-bottom: 16px; }
+.responder-page .alert { margin-bottom: 12px; }
+
+.responder-unit-name {
+  font-size: 17px;
+  margin: 2px 0;
+}
+
+.responder-status { margin: 12px 0; }
+
+.responder-unit p { margin-bottom: 14px; }
+
+.responder-note { margin-top: 16px; }

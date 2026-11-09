@@ -1,0 +1,61 @@
+.resource-panel {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+.status-counts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.status-count {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.status-count-number {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.status-count-label {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.panel-hint { margin-top: 10px; }
+
+.unit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.unit-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.unit-code {
+  font-weight: 600;
+  min-width: 62px;
+}
+
+.unit-name {
+  flex: 1;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

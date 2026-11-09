@@ -1,0 +1,69 @@
+.resources-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+}
+
+.resources-page > .alert { margin-bottom: 12px; }
+
+.resources-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.resources-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.resources-filters .input { max-width: 280px; }
+.resources-filters .select { width: auto; }
+
+.resources-table-wrap { overflow-x: auto; }
+
+.table-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.table-actions .btn + .btn { margin-left: 6px; }
+
+/* Side drawer for the add / edit form */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(16, 24, 40, 0.35);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer {
+  width: 100%;
+  max-width: 520px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+
+.drawer-title { margin-bottom: 14px; }
+.drawer-error { margin-bottom: 14px; }
+
+.capability-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+
+@media (max-width: 600px) {
+  .resources-header { flex-direction: column; }
+  .capability-grid { grid-template-columns: 1fr; }
+}

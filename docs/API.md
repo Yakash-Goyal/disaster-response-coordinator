@@ -1,110 +1,134 @@
 # API reference
 
-Base URL `http://localhost:8000`. Interactive docs at `/docs`.
+Base URL during development: `http://localhost:4000/api` (the web app reaches it through `/api`).
 
-All endpoints except `/api/health` and `/api/auth/login` require
-`Authorization: Bearer <token>`.
+- All bodies are JSON.
+- Every endpoint except `/health` and `/auth/login` needs the header `Authorization: Bearer <token>`.
+- Errors always look like `{ "error": "Readable message" }` with a matching HTTP status:
+  `400` invalid input, `401` not logged in / session expired, `403` wrong role, `404` not found,
+  `409` conflict (e.g. unit no longer available), `500` unexpected server error.
+
+Roles: **C** = commander, **A** = admin, **R** = responder.
+
+---
 
 ## Auth
 
-| Method | Path | Role | Notes |
-|---|---|---|---|
-| POST | `/api/auth/login` | — | `{username, password}` → token + user |
-| POST | `/api/auth/token` | — | OAuth2 form flow, used by `/docs` |
-| GET | `/api/auth/me` | any | Current user |
-
-## Reports (spec 4.1)
-
-| Method | Path | Role | Notes |
-|---|---|---|---|
-| POST | `/api/reports` | any | Intake. Triages and deduplicates. Returns `{report, incident_id, merged, triage}` |
-| GET | `/api/reports` | any | `?limit=&incident_id=&source=` |
-
-## Incidents (spec 4.3)
-
-| Method | Path | Role | Notes |
-|---|---|---|---|
-| GET | `/api/incidents` | any | Ranked queue. `?status=&open_only=&limit=` |
-| GET | `/api/incidents/{id}` | any | Detail with reports, decisions, assigned units |
-| PATCH | `/api/incidents/{id}` | commander | Override type, severity, status, `manual_priority` |
-| POST | `/api/incidents/{id}/resolve` | commander | Close and release units |
-| POST | `/api/incidents/merge` | commander | `{source_incident_id, target_incident_id}` |
-| POST | `/api/incidents/{id}/split` | commander | `{report_ids: [...]}` |
-
-## Resources (spec 4.4)
-
-| Method | Path | Role | Notes |
-|---|---|---|---|
-| GET | `/api/resources` | any | `?status=&type=` |
-| GET | `/api/resources/{id}` | any | |
-| POST | `/api/resources` | admin | Add a unit |
-| PATCH | `/api/resources/{id}` | commander | Status, capabilities, position |
-| DELETE | `/api/resources/{id}` | admin | Retire. 409 if the unit is mid-job |
-| POST | `/api/resources/multi-stop` | commander | `{resource_id, incident_ids}` → one routed run |
-
-## Dispatch (spec 4.5, 4.7)
-
-| Method | Path | Role | Notes |
-|---|---|---|---|
-| GET | `/api/dispatch/decisions` | any | `?pending_only=&incident_id=&limit=` |
-| GET | `/api/dispatch/decisions/{id}` | any | |
-| POST | `/api/dispatch/decisions/{id}/action` | commander | `{action: accept\|override\|reject, resource_id?, note?}` — **the only path that moves a vehicle** |
-| POST | `/api/dispatch/run` | commander | Run a cycle now instead of waiting for the tick |
-| POST | `/api/dispatch/recommend` | commander | `{incident_id, force}` — fresh recommendation for one incident |
-| GET | `/api/dispatch/candidates/{incident_id}` | commander | Everything the agent scored, for informed overrides |
-| POST | `/api/dispatch/preempt` | commander | `?incident_id=&resource_id=` — pull a unit off a lesser job |
-
-## Responder (spec 4.9)
-
-| Method | Path | Role | Notes |
-|---|---|---|---|
-| GET | `/api/responder/task` | responder | Current assignment, route, ETA, instructions |
-| POST | `/api/responder/status` | responder | `{status: en_route\|on_scene\|resolved\|available\|out_of_service, note?}` |
+| Method | Path | Roles | Body | Returns |
+|---|---|---|---|---|
+| POST | `/auth/login` | public | `{ email, password }` | `{ token, user }` |
+| GET | `/auth/me` | any | | `{ user }` |
 
 ## System
 
-| Method | Path | Role | Notes |
+| Method | Path | Roles | Returns |
 |---|---|---|---|
-| GET | `/api/health` | — | Liveness |
-| GET | `/api/status` | any | Which provider each layer is using |
-| GET | `/api/logs` | any | Audit trail. `?limit=&incident_id=&agent=&escalated_only=` |
-| GET | `/api/analytics` | any | After-action summary |
-| GET/POST | `/api/closures` | any / commander | Road closures; POST replans affected routes |
-| DELETE | `/api/closures/{id}` | commander | Clear |
-| POST | `/api/route` | any | Route preview `{origin:[lat,lng], destination:[lat,lng]}` |
-| POST | `/api/scenario/flood` | commander | Fire the seeded burst |
-| POST | `/api/scenario/social-post` | commander | Inject one synthetic report |
-| POST | `/api/scenario/reset` | commander | Clear operational data, keep accounts |
+| GET | `/health` | public | `{ ok: true }` |
+| GET | `/system` | any | `{ triageMode: "ai" \| "rules", aiModel }` |
 
-## WebSocket
+## Reports
 
-`ws://localhost:8000/ws?token=<jwt>`
+| Method | Path | Roles | Body | Returns |
+|---|---|---|---|---|
+| POST | `/reports` | C, A | `{ text (10–2000 chars), lat, lng, address?, reporter? }` | `{ reportId, incident, merged, triage }` |
+| GET | `/reports/recent` | C, A | | `{ reports }` (latest 30, all channels) |
 
-Messages are `{topic, ts, data}`.
+`POST /reports` runs the whole pipeline (triage → deduplication → incident). `merged: true` means the report
+was added to an existing incident.
 
-| Topic | Payload |
+## Incidents
+
+| Method | Path | Roles | Body | Returns |
+|---|---|---|---|---|
+| GET | `/incidents` | C, A | | `{ incidents }`: active queue, most urgent first |
+| GET | `/incidents?view=resolved` | C, A | | `{ incidents }`: last 50 resolved |
+| GET | `/incidents/:id` | C, A | | `{ incident, reports, history }` |
+| PUT | `/incidents/:id/classification` | C | `{ type, severity }` | `{ incident }` (commander review) |
+| POST | `/incidents/:id/status` | C | `{ status: "on_scene" \| "resolved" }` | `{ incident }` (resolving an open incident closes it without a unit) |
+
+Incident fields: `id, title, type, severity (1–5), urgencyScore (0–100), urgencyReason, status, lat, lng,
+address, reportCount, confidence (0–1), needsReview, classifiedBy ("ai" | "rules" | "commander"),
+triageReason, createdAt, updatedAt, lastReportAt, dispatchedAt, resolvedAt, assignedUnits[], pendingDecisionId`.
+
+## Dispatch
+
+| Method | Path | Roles | Body | Returns |
+|---|---|---|---|---|
+| POST | `/dispatch/incidents/:id/recommend` | C | | `{ decision, message }`: `decision` is `null` with a `message` if no unit is free |
+| GET | `/dispatch/incidents/:id/decisions` | C, A | | `{ decisions }` newest first |
+| POST | `/dispatch/decisions/:id/accept` | C | | `{ decision }` |
+| POST | `/dispatch/decisions/:id/override` | C | `{ resourceId, reason? }` | `{ decision }` |
+| GET | `/dispatch/route?resourceId=&incidentId=` | C, A | | `{ route: { durationSeconds, distanceMeters, source, path } }` |
+
+Decision fields: `id, incidentId, recommendedResourceId, resourceId, recommendation { requirement,
+candidates[] }, rationale, humanAction ("pending" | "accepted" | "overridden" | "superseded"),
+overrideReason, decidedByName, createdAt, decidedAt`.
+
+Each candidate: `resourceId, code, name, type, lat, lng, straightLineMeters, etaSeconds, roadMeters,
+etaSource ("osrm" | "estimate"), matchedCapabilities, missingCapabilities, loadRatio, score`.
+
+## Resources
+
+| Method | Path | Roles | Body | Returns |
+|---|---|---|---|---|
+| GET | `/resources` | C, A | `?includeRetired=true` optional | `{ resources }` |
+| GET | `/resources/summary` | C, A | | `{ summary: [{ type, status, count }] }` |
+| GET | `/resources/:id` | C, A, R (own unit only) | | `{ resource }` |
+| POST | `/resources` | A | resource body | `{ resource }` |
+| PUT | `/resources/:id` | A | resource body | `{ resource }` |
+| POST | `/resources/:id/retire` | A | | `{ resource }` |
+| POST | `/resources/:id/restore` | A | | `{ resource }` |
+
+Resource body: `{ code, name, type, status, lat, lng, homeBase, capacity, currentLoad, capabilities[] }`.
+`type`: ambulance | supply_truck | personnel | shelter.
+`status`: available | en_route | on_scene | out_of_service.
+`capabilities`: advanced_life_support, trauma_kit, water_rescue, fire_fighting, search_and_rescue,
+heavy_equipment, electrical_repair, food_and_water, medical_supplies.
+
+Rules: codes are unique, `currentLoad ≤ capacity`, and the status of a unit on an active incident cannot be
+changed (resolve the incident first).
+
+## Mock social feed
+
+| Method | Path | Roles | Returns |
+|---|---|---|---|
+| GET | `/feeds/social` | C, A | `{ status: { running, posted, total, intervalSeconds } }` |
+| POST | `/feeds/social/start` | C, A | `{ status }` |
+| POST | `/feeds/social/stop` | C, A | `{ status }` |
+| POST | `/feeds/social/rewind` | C, A | `{ status }` |
+
+## Geocoding (proxy to OpenStreetMap Nominatim)
+
+| Method | Path | Roles | Returns |
+|---|---|---|---|
+| GET | `/geocode/search?q=` | any | `{ results: [{ label, lat, lng }] }` (max 5, Chennai preferred) |
+| GET | `/geocode/reverse?lat=&lng=` | any | `{ label }` |
+
+Requests are spaced at least 1.1 s apart and cached, following Nominatim's usage policy.
+
+---
+
+## WebSocket events (Socket.IO, same port)
+
+Connect with `io({ auth: { token } })`. See [ARCHITECTURE.md §7](ARCHITECTURE.md#7-real-time-events).
+
+| Event | Payload |
 |---|---|
-| `connected` | Session info plus the last 25 events |
-| `incident.created` / `incident.updated` / `incident.resolved` | Incident |
-| `report.created` | `{report_id, incident_id}` |
-| `resource.updated` | Full resource including route |
-| `resource.moved` | Position ping — id, lat, lng, ETA, progress |
-| `decision.created` / `decision.resolved` | Dispatch decision |
-| `assignment` | Sent only to the assigned responder |
-| `log.appended` | Audit entry |
-| `alert` | `{level, title, message, incident_id}` |
-| `queue.tick` | Cycle summary and top-ranked incidents |
-| `closure.updated` | Closure change plus routes replanned |
+| `incident:updated` | Incident |
+| `resource:updated` | Resource |
+| `decision:updated` | Dispatch decision |
+| `feed:status` | Feed status |
+| `task:assigned` | `{ incident, resource }` (only to the responder of that unit) |
 
-## Errors
+---
 
-| Code | Meaning |
-|---|---|
-| 401 | Missing or expired token |
-| 403 | Role not permitted |
-| 404 | Not found |
-| 409 | Conflict — already decided, unit unavailable, unit mid-job |
-| 422 | Validation failure |
+## Try it with curl
 
-Errors return `{"detail": "..."}` written for a person to read, e.g.
-`"Ambulance 03 is en route and cannot be dispatched."`
+```bash
+# log in
+curl -X POST http://localhost:4000/api/auth/login -H "Content-Type: application/json" \
+  -d "{\"email\":\"commander@drrc.local\",\"password\":\"Commander@123\"}"
+
+# use the token from the answer
+curl http://localhost:4000/api/incidents -H "Authorization: Bearer <token>"
+```

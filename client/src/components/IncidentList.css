@@ -1,0 +1,126 @@
+.incident-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.incident-list-header {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.incident-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.incident-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.incident-items {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.incident-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.incident-item {
+  display: block;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 10px 12px 10px 14px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--sev);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.incident-item:hover { background: var(--surface-muted); }
+
+.incident-item.is-selected {
+  background: var(--primary-soft);
+  border-color: #b9c9ec;
+  border-left-color: var(--sev);
+}
+
+.incident-item-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.incident-rank {
+  font-size: 12px;
+  color: var(--text-faint);
+  min-width: 14px;
+}
+
+.incident-type {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.incident-score {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: #eef0f3;
+  border-radius: 4px;
+  padding: 0 6px;
+}
+
+.incident-title {
+  margin: 5px 0 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.incident-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.incident-item-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.incident-status {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.status-open { color: var(--danger); }
+.status-dispatched { color: var(--st-en-route); }
+.status-on_scene { color: var(--st-on-scene); }
+.status-resolved { color: var(--success); }

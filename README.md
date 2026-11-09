@@ -1,213 +1,232 @@
 # Disaster Response Resource Coordinator
 
-An AI-driven command-and-control platform for disaster response teams. It ingests
-incident reports from multiple channels, uses a multi-agent system to triage and
-prioritise them, and recommends the dispatch and routing of physical resources —
-with a human commander able to review, override, or approve every agent decision.
+A command-and-control web platform for disaster response teams. It collects incident reports from several
+channels, uses AI agents to classify and prioritise them, and recommends which ambulance, rescue team or
+supply truck to send, with real road travel times and a plain-language reason. A human commander approves or
+overrides every dispatch decision, and every agent decision and human response is logged.
 
-Built to the attached software requirements specification (`Team size: 3,
-Duration: ~1 semester`).
+The demo scenario is a monsoon flood across **Chennai**.
 
----
-
-## Run it
-
-You need Python 3.11+. Node is only needed if you want to change the frontend —
-a production build is already included.
-
-```bash
-cd backend
-pip install -r requirements.txt
-python run.py
-```
-
-Open **http://localhost:8000** and sign in as `commander` / `commander123`.
-
-That is the whole setup. No database server, no API key, no routing service. The
-system boots with a flood scenario already seeded, agents running, and vehicles
-moving on the map.
-
-### Demo accounts
-
-| Username | Password | Role | What they see |
-|---|---|---|---|
-| `commander` | `commander123` | Commander | Full dashboard, approves dispatch |
-| `responder1` | `responder123` | Field responder | Mobile view for Ambulance 01 |
-| `responder2` | `responder123` | Field responder | Engine 11 |
-| `responder3` | `responder123` | Field responder | Rescue Team A |
-| `admin` | `admin123` | Admin | Resource inventory management |
-
-### Frontend development
-
-```bash
-cd frontend
-npm install
-npm run dev        # http://localhost:5173, proxies /api and /ws to :8000
-npm run build      # rebuilds frontend/dist, which the backend serves
-```
-
-### Tests
-
-```bash
-pip install pytest
-python -m pytest tests/ -q     # 63 tests
-```
+> **New here and not technical?** Read the step-by-step [User Guide](docs/USER_GUIDE.md).
+>
+> **Project status:** mid-term build. See [TODO.md](TODO.md) for the full task list (50 tasks) and what is
+> done. The end-term plan and improvement ideas are in [docs/IMPROVEMENT_SCOPE.md](docs/IMPROVEMENT_SCOPE.md).
 
 ---
 
-## Runs anywhere, scales up where it matters
+## What works now (mid-term)
 
-Every external dependency in the specification is optional, and each one has a
-working local fallback. This is a deliberate design choice, not a shortcut: a
-command system that stops working when an API key expires or the network drops
-is the wrong shape for the problem. Each layer announces which mode it is in,
-both in the status bar and in the decision log.
-
-| Layer | Default (zero setup) | Production path | Switch with |
-|---|---|---|---|
-| Agent reasoning | Deterministic keyword/rule classifiers | Anthropic Messages API | `ANTHROPIC_API_KEY` |
-| Road routing | Road-factor estimator with synthetic geometry | OSRM road network | `OSRM_URL` |
-| Database | SQLite | PostgreSQL + PostGIS | `DATABASE_URL` |
-| Geospatial index | In-process grid hash | GiST index + `ST_DWithin` | follows `DATABASE_URL` |
-| Hazard feed | Synthetic generator | Open-Meteo compatible API | `WEATHER_API_URL` |
-
-Copy `backend/.env.example` to `backend/.env` to change any of these.
-
----
-
-## Architecture
-
-```
- Report sources                Agent layer                     Human
- ─────────────                 ───────────                     ─────
- Manual intake ─┐
- Social feed   ─┼──▶ Triage Agent ──▶ Incident Queue ──┐
- Weather feed  ─┘    (classify,        (urgency +      │
-                      dedup)            ageing)        ▼
-                                                  Supervisor ◀──▶ Commander
-                                                  (orchestrate,    (approve /
-                                                   conflicts,       override /
-                                                   escalation)      reject)
-                                                       │
-                                      Dispatch Agent ◀─┘
-                                      (candidates, load)
-                                             │
-                                       Routing Agent
-                                       (ETAs, detours,
-                                        multi-stop)
-                                             │
-                                    Vehicle Simulation
-                                             │
-                                   Live map + Responder app
-```
-
-REST carries CRUD; a WebSocket carries live incident and vehicle state. The
-Supervisor is the only component that mutates shared state, which is what keeps
-the audit log complete.
-
-Full detail in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+| Area | What you can do |
+|---|---|
+| **Login & roles** | Commander, Admin and Field Responder accounts; each role sees only its own screens (JWT auth). |
+| **Report intake** | Log a phone call through a form (search an address or click the map), or start the **mock social media feed**, which replays 26 flood posts from across Chennai. |
+| **Triage Agent** | Classifies every report (type, severity, confidence) with **Google Gemini** through a **LangGraph** graph. If no API key is set or the AI fails, it falls back to keyword rules. Uncertain results are marked **"Needs checking"**. |
+| **Deduplication** | Reports of the same type within 500 m and 60 minutes are merged into one incident (PostGIS `ST_DWithin`). The report count raises priority. |
+| **Incident queue** | Live list sorted by an explainable **priority score (0–100)**. |
+| **Classification review** | The commander confirms or corrects uncertain classifications. |
+| **Dispatch Agent** | Finds the nearest suitable free units (PostGIS KNN search), checks equipment and load, gets **real road ETAs from OSRM**, ranks them and explains the choice. |
+| **Human in the loop** | Commander clicks **Send** (accept) or **Choose another unit** (override, with a reason). Nothing is dispatched automatically. |
+| **Incident lifecycle** | Waiting → Unit on the way → On scene → Resolved. Units become free again on resolve. |
+| **Live map** | Incidents (coloured by severity) and units (coloured by status) on OpenStreetMap, with the road route of the suggested unit. |
+| **Resource panel & admin** | Unit status counts on the dashboard. Admins can add, edit, retire and restore resources. |
+| **Audit trail** | Every agent decision and human action is stored with a timestamp and shown in each incident's History. |
+| **Real-time** | All open screens update within about a second over WebSockets, with no refresh needed. |
 
 ---
 
-## How the specification maps to the code
+## Tech stack
 
-| Spec | Feature | Where |
+| Layer | Technology |
+|---|---|
+| Frontend | React 19 + TypeScript, Vite, React Router, Leaflet + OpenStreetMap (react-leaflet) |
+| Backend | Node.js + Express 5 + TypeScript |
+| AI agents | LangGraph.js, Google Gemini (`@langchain/google-genai`) |
+| Database | PostgreSQL 17 + PostGIS 3.6 |
+| Real-time | WebSockets (Socket.IO) |
+| Routing | OSRM (public server, configurable) |
+| Geocoding | OpenStreetMap Nominatim |
+| Auth | JWT + bcrypt, role-based access |
+| Validation | zod |
+
+---
+
+## Folder structure
+
+```
+Minor Project/
+├── TODO.md                     full task list with mid-term / end-term split
+├── package.json                one-command scripts for the whole project
+├── docs/
+│   ├── USER_GUIDE.md           plain-language setup + how to use every screen (all 3 roles)
+│   ├── ARCHITECTURE.md         how the system works (diagrams, flows, database)
+│   ├── API.md                  every API endpoint
+│   ├── LEARNING_GUIDE.md       what to learn, where it is in the code, viva questions
+│   └── IMPROVEMENT_SCOPE.md    end-term plan and improvement ideas
+├── server/                     backend (Express API + agents + WebSockets)
+│   ├── .env.example            configuration template
+│   └── src/
+│       ├── index.ts            starts the HTTP + WebSocket server
+│       ├── app.ts              Express app: middleware and routes
+│       ├── domain.ts           allowed values (roles, types, statuses)
+│       ├── config/env.ts       reads and validates .env
+│       ├── db/                 connection pool, migration runner, SQL schema, seed data
+│       ├── middleware/         auth (JWT + roles), validation, error handling
+│       ├── agents/
+│       │   ├── triage/         Triage Agent (LangGraph graph, AI + keyword classifiers, urgency score)
+│       │   ├── dispatch/       Dispatch Agent (candidate search, ranking, rationale)
+│       │   └── routing/        Routing Agent (OSRM client)
+│       ├── modules/            one folder per feature: routes (HTTP) + service (logic + SQL)
+│       │   ├── auth/  reports/  incidents/  resources/  dispatch/
+│       │   └── feeds/ (mock social feed)  geocode/  audit/
+│       ├── realtime/socket.ts  Socket.IO setup and broadcast helpers
+│       ├── data/               Chennai localities and synthetic social posts
+│       └── utils/              errors, logger, geo helpers
+└── client/                     frontend (React)
+    └── src/
+        ├── App.tsx             screens and who can open them
+        ├── api/                fetch wrapper + data types
+        ├── auth/               login state, route guard
+        ├── hooks/              live connection, live data, clock
+        ├── pages/              Login, Dashboard, Log a report, Resources, Responder
+        ├── components/         map, incident queue, incident panel, dispatch, forms...
+        ├── lib/                labels, formatting, map styling
+        └── styles/global.css   colours, buttons, forms, badges
+```
+
+---
+
+## Running it on your computer (Windows)
+
+### 1. Install the prerequisites (one time)
+
+| Software | Version used | Notes |
 |---|---|---|
-| 4.1 | Report ingestion, three channels | `services/ingestion.py`, `routers/incidents.py` |
-| 4.1 | Deduplication | `services/dedup.py` |
-| 4.2 | Triage Agent | `agents/triage.py` |
-| 4.3 | Queue, urgency, merge/split | `services/queue.py` |
-| 4.4 | Resource inventory | `models.py`, `routers/resources.py` |
-| 4.5 | Dispatch Agent | `agents/dispatch.py` |
-| 4.6 | Routing Agent, multi-stop, re-routing | `agents/routing.py` |
-| 4.7 | Supervisor / orchestrator | `agents/supervisor.py`, `services/orchestrator.py` |
-| 4.8 | Command dashboard | `frontend/src/App.jsx`, `components/` |
-| 4.9 | Responder view | `components/ResponderView.jsx`, `routers/responder.py` |
-| 4.10 | Vehicle simulation | `services/simulation.py` |
-| 4.11 | Notifications | `events.py` + toast layer |
-| 4.12 | After-action analytics | `services/analytics.py`, `components/Analytics.jsx` |
+| [Node.js](https://nodejs.org) | 24 LTS | includes npm |
+| [PostgreSQL](https://www.postgresql.org/download/windows/) | 17 | remember the password you set for the `postgres` user |
+| [PostGIS](https://postgis.net/documentation/getting_started/install_windows/) | 3.6 for PostgreSQL 17 | install with Stack Builder (comes with PostgreSQL) or the OSGeo bundle |
 
-### Non-functional requirements
+On the original development machine PostgreSQL was installed with
+`winget install PostgreSQL.PostgreSQL.17`, and PostGIS from the official bundle
+`postgis-bundle-pg17-3.6.2x64.zip` (download.osgeo.org), copied into `C:\Program Files\PostgreSQL\17`.
 
-- **Real-time performance** — state changes are pushed the moment they happen,
-  so propagation is bounded by network latency, not a poll interval.
-- **Explainability** — no recommendation is stored without a human-readable
-  rationale naming the unit, its ETA, and why it beat the runner-up.
-- **Human override** — only an approval creates an assignment. Severity ≥ 4 can
-  never be auto-approved, regardless of configuration. There is a test for this.
-- **Auditability** — every agent decision and human response is written to an
-  append-only log with a timestamp and an actor.
-- **Geospatial accuracy** — proximity searches use a spatial index (grid hash or
-  PostGIS GiST), never a scan over every row. There is a test asserting the
-  index returns exactly what a brute-force scan would.
+### 2. Create the database
 
----
+Open **SQL Shell (psql)** or pgAdmin and run:
 
-## What the agents actually do
-
-**Triage** classifies free text into one of nine incident types with a severity
-and a confidence. Single keywords are ambiguous — "collapsed" means a building
-in one sentence and a person in the next — so phrase-level context rules carry
-more weight than individual words. Hedging language ("maybe", "not sure") lowers
-confidence, which pushes vague reports below the review threshold instead of
-letting them through as fact. Anything under the threshold is flagged for a
-human rather than silently guessed at.
-
-**Dispatch** shortlists candidates using the spatial index, filters by capability
-and availability, then asks the Routing Agent for *real* ETAs on the top three
-before ranking. This is what stops "nearest" from silently winning: a unit 400 m
-closer across a blocked bridge is not closer in the way that matters.
-
-**Routing** returns road geometry and ETAs, plans multi-stop supply runs ordered
-by a priority-weighted nearest-neighbour walk, and detours around reported
-closures. Reporting a blocked road replans every in-flight route through it.
-
-**Supervisor** runs the others on a timer, detects when two incidents want the
-same unit and gives it to the more urgent one, escalates on low confidence or
-high severity, and writes everything to the log.
-
----
-
-## Demo
-
-See [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) for a timed walkthrough covering
-the burst of incoming reports, live triage, an approval, an override, a road
-closure forcing a re-route, and the after-action numbers.
-
-Quick version, from the dashboard:
-
-1. **Reset** — clears everything and re-seeds the fleet.
-2. **Inject report** — one synthetic social post; watch it triage and either open
-   an incident or merge into an existing one.
-3. Pick a queue row with **AWAITING YOU** and read the agent's reasoning.
-4. **Approve** — the unit starts moving on the map immediately.
-5. **Block a road**, then click on an active route — watch the log record the
-   re-route and the ETA change.
-6. Sign in as `responder1` in another window to see the same job from the field.
-7. **After action** tab — response times and the agent acceptance rate.
-
----
-
-## Team split
-
-The module boundaries follow section 8 of the specification. See
-[`docs/TEAM_SPLIT.md`](docs/TEAM_SPLIT.md) for the file-level breakdown of who
-owns what.
-
-## Project layout
-
+```sql
+CREATE DATABASE drrc;
 ```
-backend/
-  app/
-    agents/       triage, dispatch, routing, supervisor, LLM adapter
-    services/     ingestion, dedup, queue, simulation, orchestrator, analytics
-    routers/      auth, incidents, resources, dispatch, responder, system
-    models.py     ORM  ·  schemas.py  API contracts  ·  geo.py  spatial index
-    events.py     WebSocket bus  ·  security.py  JWT + RBAC
-  run.py          entry point
-frontend/
-  src/            React app; components/, lib/
-  dist/           prebuilt, served by the backend
-tests/            63 tests
-docs/             architecture, API reference, demo script, team split
+
+(PostGIS is enabled automatically by the first migration.)
+
+### 3. Configure the server
+
+```bash
+cd server
+copy .env.example .env
 ```
+
+Open `server/.env` and check:
+
+- `DATABASE_URL`: change `postgres:postgres` to `postgres:<your password>` if your password is different
+- `JWT_SECRET`: any long random string
+- `GEMINI_API_KEY`: optional (see step 6)
+
+### 4. Install packages and prepare the database
+
+From the project root (`Minor Project/`):
+
+```bash
+npm run setup       # installs root, server and client packages
+npm run db:reset    # creates the tables and loads the Chennai demo data
+```
+
+> `db:reset` deletes all data and reloads the demo data. Use it before every demo for a clean start.
+
+### 5. Start the app
+
+```bash
+npm run dev
+```
+
+This starts both parts:
+
+- API + live updates: <http://localhost:4000>
+- Web app: **<http://localhost:5173>** (open this one)
+
+### 6. Turn on the AI (optional, recommended)
+
+Without a key the Triage Agent uses keyword rules and marks every incident for checking.
+To use Gemini:
+
+1. Create a free API key at <https://aistudio.google.com> (sign in with a Google account, choose **Get API key**).
+2. Paste it into `server/.env`: `GEMINI_API_KEY=your-key-here`
+3. Restart `npm run dev`. The server log will say `Triage Agent: AI mode (gemini-3.5-flash)`.
+
+---
+
+## Demo accounts
+
+Created by the seed script (`server/src/db/seed.ts`). On the login page, click a name to fill them in.
+
+| Role | Email | Password |
+|---|---|---|
+| Commander | commander@drrc.local | Commander@123 |
+| Admin | admin@drrc.local | Admin@123 |
+| Field responder (AMB-01) | responder1@drrc.local | Responder@123 |
+| Field responder (FIRE-01) | responder2@drrc.local | Responder@123 |
+| Field responder (BOAT-01) | responder3@drrc.local | Responder@123 |
+| Field responder (TRK-01) | responder4@drrc.local | Responder@123 |
+
+---
+
+## Demo script for the evaluation (about 8 minutes)
+
+1. Run `npm run db:reset`, then `npm run dev`. Open <http://localhost:5173>.
+2. **Log in as Commander.** Show the map: units (A/T/S/H squares) and shelters across Chennai, the unit status panel on the right.
+3. **Start the social media feed.** Every 5 seconds a post arrives. Show:
+   - incidents appearing in the queue, sorted by priority score
+   - the Velachery and Saidapet posts **merging** into one incident ("2 reports", then "3 reports"), with the score going up
+   - the "Needs checking" tag on uncertain classifications
+4. **Open the top incident.** Explain the **Priority** explanation and the **Classification** reason. Click **Yes, looks right** or correct it.
+5. Click **Find the best unit.** Show the suggested unit, the **road route on the map**, the ETA, and the plain-language reason. Open **Other units considered**.
+6. Click **Send**. The unit turns blue (on the way) on the map and in the panel, and the queue updates instantly.
+7. On another incident, click **Choose another unit**, pick a different one, type a reason and send it (an **override**).
+8. Click **Mark as arrived**, then **Mark as resolved**. The unit becomes available again.
+9. Scroll to **History** to show the audit trail (agent decisions and human responses with times).
+10. Go to **Log a report**, type a phone report, search "Velachery", save. Show the result (merged or new).
+11. Log in as **Admin** in a second browser window and add or edit a resource. The commander's screen updates live.
+12. Optionally, log in as a **Responder** on a phone-sized window to show the unit page (full responder view comes at end-term).
+
+---
+
+## Useful commands
+
+| Command (from project root) | What it does |
+|---|---|
+| `npm run setup` | Install all packages |
+| `npm run dev` | Start server and client together |
+| `npm run db:reset` | Recreate tables and reload demo data |
+| `npm run db:migrate` | Apply new database migrations only |
+| `npm run ai:check` | Test that the Gemini API key in `server/.env` works |
+| `npm run typecheck` | Check TypeScript types (server) and build the client |
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `Cannot connect to the database` | PostgreSQL service not running, or the password in `DATABASE_URL` is wrong. |
+| `Migration 001_init.sql failed: ... postgis ...` | PostGIS is not installed for PostgreSQL 17. Install it (step 1) and run `npm run db:reset` again. |
+| Port 4000 or 5173 already in use | Close the other program using it, or change `PORT` in `server/.env` (then also update the proxy in `client/vite.config.ts`). |
+| ETAs say "(estimate)" | The public OSRM server could not be reached (no internet or it is busy). The app keeps working with straight-line estimates. |
+| Address search says "not available" | Nominatim could not be reached. Click on the map to set the location instead. |
+| Map is grey | No internet connection, so the OpenStreetMap tiles cannot load. |
+
+---
+
+## Credits
+
+Map data © OpenStreetMap contributors. Routing by OSRM. Geocoding by Nominatim.
+All social media posts, people and handles in the demo data are fictional.

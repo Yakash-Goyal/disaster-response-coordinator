@@ -1,11 +1,6 @@
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-*.db
-*.db-wal
-*.db-shm
+node_modules
 .env
-node_modules/
+dist
+uploads
+*.log
 .DS_Store
-.pytest_cache/
